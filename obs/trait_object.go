@@ -59,6 +59,17 @@ func (input ListObjectsInput) trans(isObs bool) (params map[string]string, heade
 	return
 }
 
+func (input ListPosixObjectsInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
+	params, headers, data, err = input.ListObjsInput.trans(isObs)
+	if err != nil {
+		return
+	}
+	if input.Marker != "" {
+		params["marker"] = input.Marker
+	}
+	return
+}
+
 func (input ListVersionsInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
 	params, headers, data, err = input.ListObjsInput.trans(isObs)
 	if err != nil {
@@ -90,6 +101,7 @@ func (input DeleteObjectsInput) trans(isObs bool) (params map[string]string, hea
 		}
 	}
 	data, md5 := convertDeleteObjectsToXML(input)
+
 	headers = map[string][]string{HEADER_MD5_CAMEL: {md5}}
 	return
 }
@@ -124,7 +136,7 @@ func (input RestoreObjectInput) trans(isObs bool) (params map[string]string, hea
 	if !isObs {
 		data, err = ConvertRequestToIoReader(input)
 	} else {
-		data = ConverntObsRestoreToXml(input)
+		data = ConventObsRestoreToXml(input)
 	}
 	return
 }
@@ -148,6 +160,9 @@ func (input GetObjectMetadataInput) trans(isObs bool) (params map[string]string,
 }
 
 func (input SetObjectMetadataInput) prepareContentHeaders(headers map[string][]string) {
+	if input.CacheControl != "" {
+		headers[HEADER_CACHE_CONTROL_CAMEL] = []string{input.CacheControl}
+	}
 	if input.ContentDisposition != "" {
 		headers[HEADER_CONTENT_DISPOSITION_CAMEL] = []string{input.ContentDisposition}
 	}
@@ -157,9 +172,14 @@ func (input SetObjectMetadataInput) prepareContentHeaders(headers map[string][]s
 	if input.ContentLanguage != "" {
 		headers[HEADER_CONTENT_LANGUAGE_CAMEL] = []string{input.ContentLanguage}
 	}
-
 	if input.ContentType != "" {
 		headers[HEADER_CONTENT_TYPE_CAML] = []string{input.ContentType}
+	}
+	// 这里为了兼容老版本，默认以Expire值为准，但如果Expires没有，则以HttpExpires为准。
+	if input.Expires != "" {
+		headers[HEADER_EXPIRES_CAMEL] = []string{input.Expires}
+	} else if input.HttpExpires != "" {
+		headers[HEADER_EXPIRES_CAMEL] = []string{input.HttpExpires}
 	}
 }
 
@@ -170,6 +190,8 @@ func (input SetObjectMetadataInput) prepareStorageClass(headers map[string][]str
 				storageClass = string(storageClassStandardIA)
 			} else if storageClass == string(StorageClassCold) {
 				storageClass = string(storageClassGlacier)
+			} else if storageClass == string(StorageClassIntelligentTiering) {
+				doLog(LEVEL_WARN, "Intelligent tiering supports only OBS signature.")
 			}
 		}
 		setHeaders(headers, HEADER_STORAGE_CLASS2, []string{storageClass}, isObs)
@@ -177,7 +199,6 @@ func (input SetObjectMetadataInput) prepareStorageClass(headers map[string][]str
 }
 
 func (input SetObjectMetadataInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
-	params = make(map[string]string)
 	params = map[string]string{string(SubResourceMetadata): ""}
 	if input.VersionId != "" {
 		params[PARAM_VERSION_ID] = input.VersionId
@@ -189,13 +210,8 @@ func (input SetObjectMetadataInput) trans(isObs bool) (params map[string]string,
 	} else {
 		setHeaders(headers, HEADER_METADATA_DIRECTIVE, []string{string(ReplaceNew)}, isObs)
 	}
-	if input.CacheControl != "" {
-		headers[HEADER_CACHE_CONTROL_CAMEL] = []string{input.CacheControl}
-	}
+
 	input.prepareContentHeaders(headers)
-	if input.Expires != "" {
-		headers[HEADER_EXPIRES_CAMEL] = []string{input.Expires}
-	}
 	if input.WebsiteRedirectLocation != "" {
 		setHeaders(headers, HEADER_WEBSITE_REDIRECT_LOCATION, []string{input.WebsiteRedirectLocation}, isObs)
 	}
@@ -242,7 +258,12 @@ func (input GetObjectInput) trans(isObs bool) (params map[string]string, headers
 	if input.RangeStart >= 0 && input.RangeEnd > input.RangeStart {
 		headers[HEADER_RANGE] = []string{fmt.Sprintf("bytes=%d-%d", input.RangeStart, input.RangeEnd)}
 	}
-
+	if input.Range != "" {
+		headers[HEADER_RANGE] = []string{input.Range}
+	}
+	if input.AcceptEncoding != "" {
+		headers[HEADER_ACCEPT_ENCODING] = []string{input.AcceptEncoding}
+	}
 	if input.IfMatch != "" {
 		headers[HEADER_IF_MATCH] = []string{input.IfMatch}
 	}
@@ -286,6 +307,8 @@ func (input ObjectOperationInput) trans(isObs bool) (params map[string]string, h
 				storageClass = string(storageClassStandardIA)
 			} else if storageClass == string(StorageClassCold) {
 				storageClass = string(storageClassGlacier)
+			} else if storageClass == string(StorageClassIntelligentTiering) {
+				doLog(LEVEL_WARN, "Intelligent tiering supports only OBS signature.")
 			}
 		}
 		setHeaders(headers, HEADER_STORAGE_CLASS2, []string{storageClass}, isObs)
@@ -315,6 +338,10 @@ func (input PutObjectBasicInput) trans(isObs bool) (params map[string]string, he
 
 	if input.ContentMD5 != "" {
 		headers[HEADER_MD5_CAMEL] = []string{input.ContentMD5}
+	}
+
+	if input.ContentSHA256 != "" {
+		setHeaders(headers, HEADER_SHA256, []string{input.ContentSHA256}, isObs)
 	}
 
 	if input.ContentLength > 0 {
@@ -381,6 +408,9 @@ func (input ModifyObjectInput) trans(isObs bool) (params map[string]string, head
 }
 
 func (input CopyObjectInput) prepareReplaceHeaders(headers map[string][]string) {
+	if input.ContentType != "" {
+		headers[HEADER_CONTENT_TYPE] = []string{input.ContentType}
+	}
 	if input.CacheControl != "" {
 		headers[HEADER_CACHE_CONTROL] = []string{input.CacheControl}
 	}
@@ -393,11 +423,11 @@ func (input CopyObjectInput) prepareReplaceHeaders(headers map[string][]string) 
 	if input.ContentLanguage != "" {
 		headers[HEADER_CONTENT_LANGUAGE] = []string{input.ContentLanguage}
 	}
-	if input.ContentType != "" {
-		headers[HEADER_CONTENT_TYPE] = []string{input.ContentType}
-	}
+	// 这里为了兼容老版本，默认以Expire值为准，但如果Expires没有，则以HttpExpires为准。
 	if input.Expires != "" {
-		headers[HEADER_EXPIRES] = []string{input.Expires}
+		headers[HEADER_EXPIRES_CAMEL] = []string{input.Expires}
+	} else if input.HttpExpires != "" {
+		headers[HEADER_EXPIRES_CAMEL] = []string{input.HttpExpires}
 	}
 }
 
@@ -477,5 +507,29 @@ func (input RenameFolderInput) trans(isObs bool) (params map[string]string, head
 	if requestPayer := string(input.RequestPayer); requestPayer != "" {
 		headers[HEADER_REQUEST_PAYER] = []string{requestPayer}
 	}
+	return
+}
+
+func (input SetDirAccesslabelInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
+	params = map[string]string{string(SubResourceAccesslabel): ""}
+
+	accesslabelJson, err := TransToJSON(input.Accesslabel)
+	if err != nil {
+		return
+	}
+	json := make([]string, 0, 2)
+	json = append(json, fmt.Sprintf("{\"accesslabel\": %s}", accesslabelJson))
+	data = strings.Join(json, "")
+
+	return
+}
+
+func (input GetDirAccesslabelInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
+	params = map[string]string{string(SubResourceAccesslabel): ""}
+	return
+}
+
+func (input DeleteDirAccesslabelInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
+	params = map[string]string{string(SubResourceAccesslabel): ""}
 	return
 }

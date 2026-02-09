@@ -35,6 +35,10 @@ type ListObjectsInput struct {
 	Marker string
 }
 
+type ListPosixObjectsInput struct {
+	ListObjectsInput
+}
+
 // ListObjectsOutput is the result of ListObjects function
 type ListObjectsOutput struct {
 	BaseModel
@@ -50,6 +54,20 @@ type ListObjectsOutput struct {
 	CommonPrefixes []string  `xml:"CommonPrefixes>Prefix"`
 	Location       string    `xml:"-"`
 	EncodingType   string    `xml:"EncodingType,omitempty"`
+}
+
+type ListPosixObjectsOutput struct {
+	ListObjectsOutput
+	CommonPrefixes []CommonPrefix `xml:"CommonPrefixes"`
+}
+
+type CommonPrefix struct {
+	XMLName      xml.Name  `xml:"CommonPrefixes"`
+	Prefix       string    `xml:"Prefix"`
+	MTime        string    `xml:"MTime"`
+	Mode         string    `xml:"Mode"`
+	InodeNo      string    `xml:"InodeNo"`
+	LastModified time.Time `xml:"LastModified"`
 }
 
 // ListVersionsInput is the input parameter of ListVersions function
@@ -167,7 +185,6 @@ type GetObjectMetadataOutput struct {
 	NextAppendPosition      string
 	StorageClass            StorageClassType
 	ContentLength           int64
-	ContentType             string
 	ETag                    string
 	AllowOrigin             string
 	AllowHeader             string
@@ -194,10 +211,12 @@ type GetObjectInput struct {
 	GetObjectMetadataInput
 	IfMatch                    string
 	IfNoneMatch                string
+	AcceptEncoding             string
 	IfUnmodifiedSince          time.Time
 	IfModifiedSince            time.Time
 	RangeStart                 int64
 	RangeEnd                   int64
+	Range                      string
 	ImageProcess               string
 	ResponseCacheControl       string
 	ResponseContentDisposition string
@@ -210,13 +229,9 @@ type GetObjectInput struct {
 // GetObjectOutput is the result of GetObject function
 type GetObjectOutput struct {
 	GetObjectMetadataOutput
-	DeleteMarker       bool
-	CacheControl       string
-	ContentDisposition string
-	ContentEncoding    string
-	ContentLanguage    string
-	Expires            string
-	Body               io.ReadCloser
+	DeleteMarker bool
+	Expires      string
+	Body         io.ReadCloser
 }
 
 // ObjectOperationInput defines the object operation properties
@@ -238,9 +253,10 @@ type ObjectOperationInput struct {
 // PutObjectBasicInput defines the basic object operation properties
 type PutObjectBasicInput struct {
 	ObjectOperationInput
-	ContentMD5    string
-	ContentLength int64
 	HttpHeader
+	ContentMD5    string
+	ContentSHA256 string
+	ContentLength int64
 }
 
 // PutObjectInput is the input parameter of PutObject function
@@ -286,14 +302,10 @@ type CopyObjectInput struct {
 	CopySourceIfUnmodifiedSince time.Time
 	CopySourceIfModifiedSince   time.Time
 	SourceSseHeader             ISseHeader
-	CacheControl                string
-	ContentDisposition          string
-	ContentEncoding             string
-	ContentLanguage             string
-	ContentType                 string
 	Expires                     string
 	MetadataDirective           MetadataDirectiveType
 	SuccessActionRedirect       string
+	HttpHeader
 }
 
 // CopyObjectOutput is the result of CopyObject function
@@ -310,16 +322,19 @@ type CopyObjectOutput struct {
 // UploadFileInput is the input parameter of UploadFile function
 type UploadFileInput struct {
 	ObjectOperationInput
-	ContentType      string
 	UploadFile       string
 	PartSize         int64
 	TaskNum          int
 	EnableCheckpoint bool
 	CheckpointFile   string
 	EncodingType     string
+<<<<<<< HEAD
 
 	// TransferCallback is optional callback function to receive transfer progress updates
 	TransferCallback func(completedParts, totalParts int, transferredBytes, totalBytes int64, status TransferStatus)
+=======
+	HttpHeader
+>>>>>>> 745aa9814b4367638ca1cd2322fa9716227e87d3
 }
 
 // DownloadFileInput is the input parameter of DownloadFile function
@@ -393,4 +408,35 @@ type RenameFolderInput struct {
 
 type RenameFolderOutput struct {
 	BaseModel
+}
+
+// SetObjectMetadataInput is the input parameter of SetObjectMetadata function
+type SetObjectMetadataInput struct {
+	Bucket                  string
+	Key                     string
+	VersionId               string
+	MetadataDirective       MetadataDirectiveType
+	Expires                 string
+	WebsiteRedirectLocation string
+	StorageClass            StorageClassType
+	Metadata                map[string]string
+	HttpHeader
+}
+
+// SetObjectMetadataOutput is the result of SetObjectMetadata function
+type SetObjectMetadataOutput struct {
+	BaseModel
+	MetadataDirective MetadataDirectiveType
+	HttpHeader
+	Expires                 string
+	WebsiteRedirectLocation string
+	StorageClass            StorageClassType
+	Metadata                map[string]string
+}
+
+type CallbackInput struct {
+	CallbackUrl      string `json:"callbackUrl"`
+	CallbackHost     string `json:"callbackHost,omitempty"`
+	CallbackBody     string `json:"callbackBody"`
+	CallbackBodyType string `json:"callbackBodyType,omitempty"`
 }

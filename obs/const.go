@@ -13,7 +13,7 @@
 package obs
 
 const (
-	OBS_SDK_VERSION        = "3.23.4"
+	OBS_SDK_VERSION        = "3.25.9"
 	USER_AGENT             = "obs-sdk-go/" + OBS_SDK_VERSION
 	HEADER_PREFIX          = "x-amz-"
 	HEADER_PREFIX_META     = "x-amz-meta-"
@@ -49,6 +49,9 @@ const (
 	HEADER_GRANT_READ_DELIVERED_OBS         = "grant-read-delivered"
 	HEADER_GRANT_FULL_CONTROL_DELIVERED_OBS = "grant-full-control-delivered"
 	HEADER_REQUEST_ID                       = "request-id"
+	HEADER_ERROR_CODE                       = "error-code"
+	HEADER_ERROR_INDICATOR                  = "x-reserved-indicator"
+	HEADER_ERROR_MESSAGE                    = "error-message"
 	HEADER_BUCKET_REGION                    = "bucket-region"
 	HEADER_ACCESS_CONRTOL_ALLOW_ORIGIN      = "access-control-allow-origin"
 	HEADER_ACCESS_CONRTOL_ALLOW_HEADERS     = "access-control-allow-headers"
@@ -119,6 +122,8 @@ const (
 	HEADER_HOST                                = "host"
 	HEADER_AUTH_CAMEL                          = "Authorization"
 	HEADER_MD5_CAMEL                           = "Content-MD5"
+	HEADER_SHA256_CAMEL                        = "Content-SHA256"
+	HEADER_SHA256                              = "content-sha256"
 	HEADER_LOCATION_CAMEL                      = "Location"
 	HEADER_CONTENT_LENGTH_CAMEL                = "Content-Length"
 	HEADER_CONTENT_TYPE_CAML                   = "Content-Type"
@@ -130,6 +135,7 @@ const (
 	HEADER_CONTENT_ENCODING_CAMEL              = "Content-Encoding"
 	HEADER_CONTENT_LANGUAGE_CAMEL              = "Content-Language"
 	HEADER_EXPIRES_CAMEL                       = "Expires"
+	HEADER_ACCEPT_ENCODING                     = "Accept-Encoding"
 
 	PARAM_VERSION_ID                   = "versionId"
 	PARAM_RESPONSE_CONTENT_TYPE        = "response-content-type"
@@ -157,7 +163,6 @@ const (
 	DEFAULT_MAX_RETRY_COUNT      = 3
 	DEFAULT_MAX_REDIRECT_COUNT   = 3
 	DEFAULT_MAX_CONN_PER_HOST    = 1000
-	EMPTY_CONTENT_SHA256         = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	UNSIGNED_PAYLOAD             = "UNSIGNED-PAYLOAD"
 	LONG_DATE_FORMAT             = "20060102T150405Z"
 	SHORT_DATE_FORMAT            = "20060102"
@@ -195,6 +200,18 @@ const (
 	MIN_PART_SIZE     = 100 * 1024
 	DEFAULT_PART_SIZE = 9 * 1024 * 1024
 	MAX_PART_NUM      = 10000
+
+	GET_OBJECT                  = "GetObject"
+	PUT_OBJECT                  = "PutObject"
+	PUT_FILE                    = "PutFile"
+	APPEND_OBJECT               = "AppendObject"
+	MAX_CERT_XML_BODY_SIZE      = 40 * 1024
+	CERT_ID_SIZE                = 16
+	MAX_CERTIFICATE_NAME_LENGTH = 63
+	MIN_CERTIFICATE_NAME_LENGTH = 3
+	CERTIFICATE_FIELD_NAME      = "CERTIFICATE ID SIZE"
+	NAME_LENGTH                 = "Name Length"
+	XML_SIZE                    = "XML SIZE"
 )
 
 var (
@@ -203,6 +220,7 @@ var (
 	allowedRequestHTTPHeaderMetadataNames = map[string]bool{
 		"content-type":                   true,
 		"content-md5":                    true,
+		"content-sha256":                 true,
 		"content-length":                 true,
 		"content-language":               true,
 		"expires":                        true,
@@ -224,6 +242,19 @@ var (
 		"if-none-match":                  true,
 		"last-modified":                  true,
 		"content-range":                  true,
+		"accept-encoding":                true,
+		"x-hic-info":                     true,
+		"safe-area":                      true,
+	}
+
+	allowedLogResponseHTTPHeaderNames = map[string]bool{
+		"content-type":         true,
+		"etag":                 true,
+		"connection":           true,
+		"content-length":       true,
+		"date":                 true,
+		"server":               true,
+		"x-reserved-indicator": true,
 	}
 
 	allowedResourceParameterNames = map[string]bool{
@@ -271,5 +302,28 @@ var (
 		"ignore-sign-in-query":         true,
 		"name":                         true,
 		"rename":                       true,
+		"customdomain":                 true,
+		"mirrorbacktosource":           true,
+		"x-obs-accesslabel":            true,
+		"object-lock":                  true,
+		"retention":                    true,
+		"x-obs-security-token":         true,
+		"truncate":                     true,
+		"length":                       true,
+		"inventory":                    true,
+		"directcoldaccess":             true,
+		"attname":                      true,
+		"cdnnotifyconfiguration":       true,
+		"publicaccessblock":            true,
+		"bucketstatus":                 true,
+		"policystatus":                 true,
+	}
+
+	obsStorageClasses = []string{
+		string(StorageClassStandard),
+		string(StorageClassWarm),
+		string(StorageClassCold),
+		string(StorageClassDeepArchive),
+		string(StorageClassIntelligentTiering),
 	}
 )

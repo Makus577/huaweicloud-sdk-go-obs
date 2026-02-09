@@ -396,4 +396,9 @@ var mimeTypes = map[string]string{
 	"heic":    "image/heic",
 	"mkv":     "video/x-matroska",
 	"raw":     "image/x-panasonic-raw",
+	"webp":    "image/webp",
+	"3gp":     "audio/3gpp",
+	"3g2":     "audio/3gpp2",
+	"weba":    "audio/webm",
+	"woff2":   "font/woff2",
 }

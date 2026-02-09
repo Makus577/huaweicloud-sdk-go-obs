@@ -18,6 +18,13 @@ import (
 )
 
 func (input ListBucketsInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
+	params = make(map[string]string)
+	if input.MaxKeys > 0 {
+		params["max-keys"] = IntToString(input.MaxKeys)
+	}
+	if input.Marker != "" {
+		params["marker"] = input.Marker
+	}
 	headers = make(map[string][]string)
 	if input.QueryLocation && !isObs {
 		setHeaders(headers, HEADER_LOCATION_AMZ, []string{"true"}, isObs)
@@ -63,6 +70,8 @@ func (input CreateBucketInput) trans(isObs bool) (params map[string]string, head
 				storageClass = string(storageClassStandardIA)
 			} else if storageClass == string(StorageClassCold) {
 				storageClass = string(storageClassGlacier)
+			} else if storageClass == string(StorageClassIntelligentTiering) {
+				doLog(LEVEL_WARN, "Intelligent tiering supports only OBS signature.")
 			}
 		}
 		setHeadersNext(headers, HEADER_STORAGE_CLASS_OBS, HEADER_STORAGE_CLASS, []string{storageClass}, isObs)
@@ -111,16 +120,20 @@ func (input CreateBucketInput) trans(isObs bool) (params map[string]string, head
 func (input SetBucketStoragePolicyInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
 	xml := make([]string, 0, 1)
 	if !isObs {
-		storageClass := "STANDARD"
-		if input.StorageClass == StorageClassWarm {
-			storageClass = string(storageClassStandardIA)
+		storageClass := input.StorageClass
+		if storageClass == "" {
+			storageClass = StorageClassStandard
+		} else if input.StorageClass == StorageClassWarm {
+			storageClass = storageClassStandardIA
 		} else if input.StorageClass == StorageClassCold {
-			storageClass = string(storageClassGlacier)
+			storageClass = storageClassGlacier
+		} else if storageClass == StorageClassIntelligentTiering {
+			doLog(LEVEL_WARN, "Intelligent tiering supports only OBS signature.")
 		}
 		params = map[string]string{string(SubResourceStoragePolicy): ""}
 		xml = append(xml, fmt.Sprintf("<StoragePolicy><DefaultStorageClass>%s</DefaultStorageClass></StoragePolicy>", storageClass))
 	} else {
-		if input.StorageClass != StorageClassWarm && input.StorageClass != StorageClassCold {
+		if !IsContain(obsStorageClasses, string(input.StorageClass)) {
 			input.StorageClass = StorageClassStandard
 		}
 		params = map[string]string{string(SubResourceStorageClass): ""}
@@ -154,11 +167,17 @@ func (input SetBucketPolicyInput) trans(isObs bool) (params map[string]string, h
 
 func (input SetBucketCorsInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
 	params = map[string]string{string(SubResourceCors): ""}
-	data, md5, err := ConvertRequestToIoReaderV2(input)
+	data, md5OrSha256, err := ConvertRequestToIoReaderV2(input, input.EnableSha256)
 	if err != nil {
 		return
 	}
-	headers = map[string][]string{HEADER_MD5_CAMEL: {md5}}
+
+	headerCheckAlgorithm := HEADER_MD5_CAMEL
+	if input.EnableSha256 {
+		headerCheckAlgorithm = HEADER_SHA256_CAMEL
+	}
+
+	headers = map[string][]string{headerCheckAlgorithm: {md5OrSha256}}
 	return
 }
 
@@ -191,8 +210,15 @@ func (input SetBucketLoggingConfigurationInput) trans(isObs bool) (params map[st
 
 func (input SetBucketLifecycleConfigurationInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
 	params = map[string]string{string(SubResourceLifecycle): ""}
-	data, md5 := ConvertLifecyleConfigurationToXml(input.BucketLifecyleConfiguration, true, isObs)
-	headers = map[string][]string{HEADER_MD5_CAMEL: {md5}}
+
+	data, md5OrSha256 := ConvertLifecycleConfigurationToXml(input.BucketLifecycleConfiguration, true, isObs, input.EnableSha256)
+
+	headerCheckAlgorithm := HEADER_MD5_CAMEL
+	if input.EnableSha256 {
+		headerCheckAlgorithm = HEADER_SHA256_CAMEL
+	}
+
+	headers = map[string][]string{headerCheckAlgorithm: {md5OrSha256}}
 	return
 }
 
@@ -204,11 +230,17 @@ func (input SetBucketEncryptionInput) trans(isObs bool) (params map[string]strin
 
 func (input SetBucketTaggingInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
 	params = map[string]string{string(SubResourceTagging): ""}
-	data, md5, err := ConvertRequestToIoReaderV2(input)
+	data, md5OrSha256, err := ConvertRequestToIoReaderV2(input, input.EnableSha256)
 	if err != nil {
 		return
 	}
-	headers = map[string][]string{HEADER_MD5_CAMEL: {md5}}
+
+	headerCheckAlgorithm := HEADER_MD5_CAMEL
+	if input.EnableSha256 {
+		headerCheckAlgorithm = HEADER_SHA256_CAMEL
+	}
+
+	headers = map[string][]string{headerCheckAlgorithm: {md5OrSha256}}
 	return
 }
 
@@ -260,10 +292,8 @@ func (input GetBucketFetchJobInput) trans(isObs bool) (params map[string]string,
 
 func (input SetBucketMirrorBackToSourceInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
 	params = map[string]string{string(SubResourceMirrorBackToSource): ""}
-
-	contentType, _ := mimeTypes["json"]
 	headers = make(map[string][]string, 1)
-	headers[HEADER_CONTENT_TYPE] = []string{contentType}
+	headers[HEADER_CONTENT_TYPE] = []string{mimeTypes["json"]}
 	data = input.Rules
 	return
 }
@@ -272,6 +302,51 @@ func (input DeleteBucketCustomDomainInput) trans(isObs bool) (params map[string]
 	return trans(SubResourceCustomDomain, input)
 }
 
+func handleDomainConfig(customDomainConfiguration CustomDomainConfiguration) (headers map[string][]string, data interface{}, err error) {
+
+	headers = make(map[string][]string)
+	if customDomainConfiguration.CertificateId != "" {
+		err = validateLength(len(customDomainConfiguration.CertificateId), CERT_ID_SIZE, CERT_ID_SIZE, CERTIFICATE_FIELD_NAME)
+		if err != nil {
+			return headers, nil, err
+		}
+	}
+
+	err = validateLength(len(customDomainConfiguration.Name), MIN_CERTIFICATE_NAME_LENGTH, MAX_CERTIFICATE_NAME_LENGTH, NAME_LENGTH)
+	if err != nil {
+		return headers, nil, err
+	}
+
+	reader, md5, convertErr := ConvertRequestToIoReaderV2(customDomainConfiguration, false)
+	if convertErr != nil {
+		return headers, nil, convertErr
+	}
+
+	readerLen, err := GetReaderLen(reader)
+	if err != nil {
+		return headers, nil, err
+	}
+
+	err = validateLength(int(readerLen), 0, MAX_CERT_XML_BODY_SIZE, XML_SIZE)
+	if err != nil {
+		return headers, nil, err
+	}
+	data = reader
+
+	headers = map[string][]string{HEADER_MD5_CAMEL: {md5}}
+	return
+}
+
 func (input SetBucketCustomDomainInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
-	return trans(SubResourceCustomDomain, input)
+	params = map[string]string{string(SubResourceCustomDomain): input.CustomDomain}
+	headers = make(map[string][]string)
+	data = nil
+	if input.CustomDomainConfiguration != nil {
+		headers, data, err = handleDomainConfig(*input.CustomDomainConfiguration)
+	}
+	return
+}
+
+func (input PutBucketPublicAccessBlockInput) trans(isObs bool) (params map[string]string, headers map[string][]string, data interface{}, err error) {
+	return trans(SubResourcePublicAccessBlock, input)
 }

@@ -1,16 +1,137 @@
-Version 3.21.12
+Version 3.25.9
 
 New Features:
-1. Added the `obs.WithTrafficLimitHeader` method to limit the bandwidth of a single connection.
 
 Documentation & Demo:
-1. Added descriptions about single-connection bandwidth throttling.
+
+Resolved Issues:
+1. Fixed an issue where the first byte could not be downloaded using range.
+
+-----------------------------------------------------------------------------------
+
+Version 3.25.4
+
+New Features:
+1. Supports passing metadata when use UploadFile method.
+
+Documentation & Demo:
+
+Resolved Issues:
+
+-----------------------------------------------------------------------------------
+
+Version 3.25.3
+
+New Features:
+1. Added BPA feature.
+2. Added intelligent tiering feature.
+
+Documentation & Demo:
+1. Added descriptions about BPA APIs.
+
+Resolved Issues:
+
+-----------------------------------------------------------------------------------
+
+Version 3.24.9
+
+New Features:
+1. Added list POSIX Object API.
+
+Documentation & Demo:
+
+Resolved Issues:
+1. Optimize error log printing.
+
+-----------------------------------------------------------------------------------
+
+Version 3.24.6
+
+New Features:
+1. Supports passing metadata when use CopyObject and InitiateMultipartUpload method.
+
+Documentation & Demo:
+
+Resolved Issues:
+1. Fixed the issue where bucket acl configuration failed in some scenarios.
+2. Fixed the issue where data transmission exception in retry scenarios.
+
+-----------------------------------------------------------------------------------
+
+Version 3.24.3
+
+New Features:
+1. Added directory accesslable-related APIs, including SetDirAccesslabel, GetDirAccesslabel, and DeleteDirAccesslabel.
+
+Documentation & Demo:
+1. Added descriptions about directory accesslable-related APIs.
+
+Resolved Issues:
+
+-----------------------------------------------------------------------------------
+
+Version 3.23.12
+
+New Features:
+1. Added obs.WithDisableKeepAlive method to implement short connection function.
+2. Added deep archive storage-class.
+
+Documentation & Demo:
+
+Resolved Issues:
+1. Fixed the issue where bucket life cycle configuration failed in some scenarios.
+
+-----------------------------------------------------------------------------------
+
+Version 3.23.9
+
+New Features:
+1. Added the obs.WithProgress method to support progress bar callback.
+2. Added fragment expiration time in configuration life cycle management rules.
+
+Documentation & Demo:
+
+-----------------------------------------------------------------------------------
+
+Version 3.23.4
+
+New Features:
+1. Added the obs.WithCustomHeader method when upload.
+2. Added bucket customDomain-related APIs, including SetBucketCustomDomain, GetBucketCustomDomain, and DeleteBucketCustomDomain.
+3. Added bucket mirrorBackToSource-related APIs, including SetBucketMirrorBackToSource, GetBucketMirrorBackToSource, and DeleteBucketMirrorBackToSource.
+
+Documentation & Demo:
+1. Added descriptions about bucket customDomain APIs.
+2. Added descriptions about bucket mirrorBackToSource APIs.
+
+-----------------------------------------------------------------------------------
+Version 3.23.3
+
+New Features:
+1. Added the obs.WithCallbackHeader method when upload.
+
+Documentation & Demo:
+1. Added descriptions about callback when upload.
 2. Added descriptions about extended configurations of SDK APIs.
 
 Resolved Issues:
 1. Optimized some code.
 
 -----------------------------------------------------------------------------------
+Version 3.21.12
+
+New Features:
+1. Added obs.WithTrafficLimitHeader method to realize single-connection bandwidth throttling.
+   
+Documentation & Demo:
+1. Added descriptions about single-connection bandwidth throttling.
+2. Added descriptions about the SDK interface extension configuration.
+
+Resolved Issues:
+1. Optimized part of the code.
+
+-----------------------------------------------------------------------------------
+
 Version 3.21.8
 
 New Features:
