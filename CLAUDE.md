@@ -89,3 +89,145 @@ When using path-style access with OBS signature, it automatically falls back to 
 - **Path Style**: `https://endpoint/bucket` (automatically enabled when endpoint is an IP address)
 
 Path style can be explicitly set via `WithPathStyle(true)`.
+
+## Resume Transfer Enhancement
+
+### Overview
+This document describes the implementation of resume transfer enhancement for Huawei Cloud OBS Go SDK, including pause, cancel, and resume operations.
+
+### Key Changes
+
+#### 1. Type Definitions (`obs/type.go`)
+- Added `TransferStatus` enum type to track transfer states:
+  - `TransferStatusPending` - Task is being prepared
+  - `TransferStatusRunning` - Task is in progress
+  - `TransferStatusPaused` - Task is paused
+  - `TransferStatusCanceled` - Task is canceled
+  - `TransferStatusCompleted` - Task is completed
+  - `TransferStatusFailed` - Task failed
+
+- Added `TransferController` interface for managing transfer tasks:
+  - `Status() TransferStatus` - Get current task status
+  - `Pause() error` - Pause task
+  - `Cancel() error` - Cancel task
+  - `Resume() error` - Resume task (only valid in paused state)
+  - `Progress() (int, int, int64, int64)` - Get transfer progress (completed parts/total parts, transferred bytes/total bytes)
+
+- Implemented `transferContext` struct to manage task state and progress:
+  - Uses atomic operations for thread-safe state management
+  - Tracks completed parts and transferred bytes
+  - Manages pause/cancel flags
+
+#### 2. Input Parameters (`obs/model_object.go`)
+- Added `TransferCallback` field to `UploadFileInput` and `DownloadFileInput` structs:
+  - Callback function to receive transfer progress updates
+  - Parameters: completed parts, total parts, transferred bytes, total bytes, transfer status
+
+#### 3. API Implementation (`obs/client_resume.go`)
+- Added `CreateUploadTask` and `CreateDownloadTask` functions to create transfer controllers
+- Implemented `uploadController` and `downloadController` structs to handle task execution and control
+- Added `Start()` method to each controller to initiate transfer
+- Modified existing `UploadFile` and `DownloadFile` functions to use new transfer context
+
+#### 4. Transfer Logic (`obs/transfer.go`)
+- Updated `resumeUpload` and `resumeDownload` functions to accept transfer context
+- Modified `uploadPartConcurrent` and `downloadFileConcurrent` to handle pause and cancel logic
+- Updated `uploadPartTask` and `downloadPartTask` to check pause flag during execution
+- Added progress tracking using ProgressListener
+
+#### 5. Testing (`tests/resume_transfer_test.go`)
+- Created comprehensive test file for resume transfer enhancement
+- Included test cases for:
+  - Normal upload/download
+  - Pause/resume operations
+  - Cancel operations
+  - Progress tracking
+  - Parallel transfers
+  - Performance testing
+  - Data reliability testing
+
+### Usage Examples
+
+#### Upload with Pause/Resume
+```go
+input := &obs.UploadFileInput{
+    Bucket: "your-bucket",
+    Key: "large-file.txt",
+    UploadFile: "local-file.txt",
+    EnableCheckpoint: true,
+    TaskNum: 3,
+}
+
+controller, err := client.CreateUploadTask(input)
+if err != nil {
+    fmt.Println("Error creating upload task:", err)
+    return
+}
+
+// Start upload in goroutine
+var wg sync.WaitGroup
+wg.Add(1)
+go func() {
+    defer wg.Done()
+    _, err = controller.Start()
+    if err != nil {
+        fmt.Println("Upload error:", err)
+    } else {
+        fmt.Println("Upload completed successfully")
+    }
+}()
+
+// Pause after 2 seconds
+time.Sleep(2 * time.Second)
+controller.Pause()
+fmt.Println("Upload paused")
+
+// Resume after 1 second
+time.Sleep(1 * time.Second)
+controller.Resume()
+fmt.Println("Upload resumed")
+
+// Wait for completion
+wg.Wait()
+```
+
+#### Download with Progress Tracking
+```go
+input := &obs.DownloadFileInput{
+    Bucket: "your-bucket",
+    Key: "large-file.txt",
+    DownloadFile: "local-file.txt",
+    EnableCheckpoint: true,
+    TaskNum: 3,
+    TransferCallback: func(completed, total int, transferred, totalBytes int64, status obs.TransferStatus) {
+        fmt.Printf("Status: %v, Progress: %d/%d parts, %d/%d bytes\n",
+            status, completed, total, transferred, totalBytes)
+    },
+}
+
+controller, err := client.CreateDownloadTask(input)
+if err != nil {
+    fmt.Println("Error creating download task:", err)
+    return
+}
+
+_, err = controller.Start()
+if err != nil {
+    fmt.Println("Download error:", err)
+} else {
+    fmt.Println("Download completed successfully")
+}
+```
+
+### Build and Test
+
+To build the SDK with the new features:
+```bash
+go build ./...
+```
+
+To run the resume transfer tests:
+```bash
+cd tests
+go test -run TestResumeTransfer -v
+```
