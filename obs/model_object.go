@@ -328,13 +328,10 @@ type UploadFileInput struct {
 	EnableCheckpoint bool
 	CheckpointFile   string
 	EncodingType     string
-<<<<<<< HEAD
+	HttpHeader
 
 	// TransferCallback is optional callback function to receive transfer progress updates
 	TransferCallback func(completedParts, totalParts int, transferredBytes, totalBytes int64, status TransferStatus)
-=======
-	HttpHeader
->>>>>>> 745aa9814b4367638ca1cd2322fa9716227e87d3
 }
 
 // DownloadFileInput is the input parameter of DownloadFile function
