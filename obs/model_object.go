@@ -317,6 +317,9 @@ type UploadFileInput struct {
 	EnableCheckpoint bool
 	CheckpointFile   string
 	EncodingType     string
+
+	// TransferCallback is optional callback function to receive transfer progress updates
+	TransferCallback func(completedParts, totalParts int, transferredBytes, totalBytes int64, status TransferStatus)
 }
 
 // DownloadFileInput is the input parameter of DownloadFile function
@@ -331,6 +334,9 @@ type DownloadFileInput struct {
 	TaskNum           int
 	EnableCheckpoint  bool
 	CheckpointFile    string
+
+	// TransferCallback is optional callback function to receive transfer progress updates
+	TransferCallback func(completedParts, totalParts int, transferredBytes, totalBytes int64, status TransferStatus)
 }
 
 type AppendObjectInput struct {

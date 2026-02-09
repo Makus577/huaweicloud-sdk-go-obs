@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 var errAbort = errors.New("AbortError")
@@ -79,6 +80,7 @@ type uploadPartTask struct {
 	UploadPartInput
 	obsClient        *ObsClient
 	abort            *int32
+	pause            *int32
 	extensions       []extensionOptions
 	enableCheckpoint bool
 }
@@ -86,6 +88,16 @@ type uploadPartTask struct {
 func (task *uploadPartTask) Run() interface{} {
 	if atomic.LoadInt32(task.abort) == 1 {
 		return errAbort
+	}
+	// 检查是否需要暂停
+	if atomic.LoadInt32(task.pause) == 1 {
+		// 等待恢复或取消信号
+		for atomic.LoadInt32(task.pause) == 1 && atomic.LoadInt32(task.abort) == 0 {
+			time.Sleep(100 * time.Millisecond) // 暂停检查间隔
+		}
+		if atomic.LoadInt32(task.abort) == 1 {
+			return errAbort
+		}
 	}
 
 	input := &UploadPartInput{}
@@ -312,7 +324,7 @@ func completeParts(ufc *UploadCheckpoint, enableCheckpoint bool, checkpointFileP
 	return completeOutput, err
 }
 
-func (obsClient ObsClient) resumeUpload(input *UploadFileInput, extensions []extensionOptions) (output *CompleteMultipartUploadOutput, err error) {
+func (obsClient ObsClient) resumeUpload(input *UploadFileInput, ctx *transferContext, extensions []extensionOptions) (output *CompleteMultipartUploadOutput, err error) {
 	uploadFileStat, err := os.Stat(input.UploadFile)
 	if err != nil {
 		doLog(LEVEL_ERROR, fmt.Sprintf("Failed to stat uploadFile with error: [%v].", err))
@@ -353,7 +365,19 @@ func (obsClient ObsClient) resumeUpload(input *UploadFileInput, extensions []ext
 		}
 	}
 
-	uploadPartError := obsClient.uploadPartConcurrent(ufc, checkpointFilePath, input, extensions)
+	// 计算总块数和总字节数
+	if ctx == nil {
+		totalParts := len(ufc.UploadParts)
+		var totalBytes int64
+		for _, part := range ufc.UploadParts {
+			totalBytes += part.PartSize
+		}
+		ctx = newTransferContext(totalParts, totalBytes)
+	}
+
+	ctx.setStatus(TransferStatusRunning)
+
+	uploadPartError := obsClient.uploadPartConcurrent(ufc, checkpointFilePath, input, ctx, extensions)
 	err = handleUploadFileResult(uploadPartError, ufc, enableCheckpoint, &obsClient, extensions)
 	if err != nil {
 		return nil, err
@@ -384,15 +408,18 @@ func handleUploadTaskResult(result interface{}, ufc *UploadCheckpoint, partNum i
 	return
 }
 
-func (obsClient ObsClient) uploadPartConcurrent(ufc *UploadCheckpoint, checkpointFilePath string, input *UploadFileInput, extensions []extensionOptions) error {
+func (obsClient ObsClient) uploadPartConcurrent(ufc *UploadCheckpoint, checkpointFilePath string, input *UploadFileInput, ctx *transferContext, extensions []extensionOptions) error {
 	pool := NewRoutinePool(input.TaskNum, MAX_PART_NUM)
 	var uploadPartError atomic.Value
 	var errFlag int32
-	var abort int32
 	lock := new(sync.Mutex)
 	for _, uploadPart := range ufc.UploadParts {
-		if atomic.LoadInt32(&abort) == 1 {
+		if ctx.isCanceled() {
 			break
+		}
+		if ctx.isPaused() {
+			time.Sleep(100 * time.Millisecond) // 暂停时等待
+			continue
 		}
 		if uploadPart.IsCompleted {
 			continue
@@ -409,7 +436,8 @@ func (obsClient ObsClient) uploadPartConcurrent(ufc *UploadCheckpoint, checkpoin
 				PartSize:   uploadPart.PartSize,
 			},
 			obsClient:        &obsClient,
-			abort:            &abort,
+			abort:            &ctx.abort,
+			pause:            &ctx.pause,
 			extensions:       extensions,
 			enableCheckpoint: input.EnableCheckpoint,
 		}
@@ -492,6 +520,7 @@ type downloadPartTask struct {
 	obsClient        *ObsClient
 	extensions       []extensionOptions
 	abort            *int32
+	pause            *int32
 	partNumber       int64
 	tempFileURL      string
 	enableCheckpoint bool
@@ -500,6 +529,16 @@ type downloadPartTask struct {
 func (task *downloadPartTask) Run() interface{} {
 	if atomic.LoadInt32(task.abort) == 1 {
 		return errAbort
+	}
+	// 检查是否需要暂停
+	if atomic.LoadInt32(task.pause) == 1 {
+		// 等待恢复或取消信号
+		for atomic.LoadInt32(task.pause) == 1 && atomic.LoadInt32(task.abort) == 0 {
+			time.Sleep(100 * time.Millisecond) // 暂停检查间隔
+		}
+		if atomic.LoadInt32(task.abort) == 1 {
+			return errAbort
+		}
 	}
 	getObjectInput := &GetObjectInput{}
 	getObjectInput.GetObjectMetadataInput = task.GetObjectMetadataInput
@@ -684,7 +723,7 @@ func handleDownloadFileResult(tempFileURL string, enableCheckpoint bool, downloa
 	return nil
 }
 
-func (obsClient ObsClient) resumeDownload(input *DownloadFileInput, extensions []extensionOptions) (output *GetObjectMetadataOutput, err error) {
+func (obsClient ObsClient) resumeDownload(input *DownloadFileInput, ctx *transferContext, extensions []extensionOptions) (output *GetObjectMetadataOutput, err error) {
 	getObjectmetaOutput, err := getObjectInfo(input, &obsClient, extensions)
 	if err != nil {
 		return nil, err
@@ -736,7 +775,19 @@ func (obsClient ObsClient) resumeDownload(input *DownloadFileInput, extensions [
 		}
 	}
 
-	downloadFileError := obsClient.downloadFileConcurrent(input, dfc, extensions)
+	// 计算总块数和总字节数
+	if ctx == nil {
+		totalParts := len(dfc.DownloadParts)
+		var totalBytes int64
+		for _, part := range dfc.DownloadParts {
+			totalBytes += (part.RangeEnd - part.Offset + 1)
+		}
+		ctx = newTransferContext(totalParts, totalBytes)
+	}
+
+	ctx.setStatus(TransferStatusRunning)
+
+	downloadFileError := obsClient.downloadFileConcurrent(input, dfc, ctx, extensions)
 	err = handleDownloadFileResult(dfc.TempFileInfo.TempFileUrl, enableCheckpoint, downloadFileError)
 	if err != nil {
 		return nil, err
@@ -826,15 +877,18 @@ func handleDownloadTaskResult(result interface{}, dfc *DownloadCheckpoint, partN
 	return
 }
 
-func (obsClient ObsClient) downloadFileConcurrent(input *DownloadFileInput, dfc *DownloadCheckpoint, extensions []extensionOptions) error {
+func (obsClient ObsClient) downloadFileConcurrent(input *DownloadFileInput, dfc *DownloadCheckpoint, ctx *transferContext, extensions []extensionOptions) error {
 	pool := NewRoutinePool(input.TaskNum, MAX_PART_NUM)
 	var downloadPartError atomic.Value
 	var errFlag int32
-	var abort int32
 	lock := new(sync.Mutex)
 	for _, downloadPart := range dfc.DownloadParts {
-		if atomic.LoadInt32(&abort) == 1 {
+		if ctx.isCanceled() {
 			break
+		}
+		if ctx.isPaused() {
+			time.Sleep(100 * time.Millisecond) // 暂停时等待
+			continue
 		}
 		if downloadPart.IsCompleted {
 			continue
@@ -851,7 +905,8 @@ func (obsClient ObsClient) downloadFileConcurrent(input *DownloadFileInput, dfc 
 			},
 			obsClient:        &obsClient,
 			extensions:       extensions,
-			abort:            &abort,
+			abort:            &ctx.abort,
+			pause:            &ctx.pause,
 			partNumber:       downloadPart.PartNumber,
 			tempFileURL:      dfc.TempFileInfo.TempFileUrl,
 			enableCheckpoint: input.EnableCheckpoint,
