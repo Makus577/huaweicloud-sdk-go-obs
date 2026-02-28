@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go env:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:support.huaweicloud.com)",
+      "Bash(grep:*)",
+      "WebFetch(domain:developer.huaweicloud.com)",
+      "Bash(go build:*)",
+      "Bash(where:*)",
+      "Bash(go version:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(find:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(git config:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(go vet:*)"
+    ]
+  }
+}

@@ -12,6 +12,12 @@
 
 package obs
 
+import (
+	"fmt"
+	"sync"
+	"sync/atomic"
+)
+
 // SignatureType defines type of signature
 type SignatureType string
 
@@ -130,6 +136,114 @@ const (
 	// SubResourcePublicPolicyStatus subResource value: policyStatus
 	SubResourceBucketPolicyPublicStatus SubResourceType = "policyStatus"
 )
+
+// TransferStatus defines transfer status
+type TransferStatus int32
+
+const (
+	TransferStatusPending  TransferStatus = 0 // 任务正在准备中
+	TransferStatusRunning  TransferStatus = 1 // 任务正在进行中
+	TransferStatusPaused   TransferStatus = 2 // 任务已暂停
+	TransferStatusCanceled TransferStatus = 3 // 任务已取消
+	TransferStatusCompleted TransferStatus = 4 // 任务已完成
+	TransferStatusFailed   TransferStatus = 5 // 任务失败
+)
+
+// TransferController defines the interface for controlling transfer task
+type TransferController interface {
+	// 获取当前任务状态
+	Status() TransferStatus
+
+	// 暂停任务
+	Pause() error
+
+	// 取消任务
+	Cancel() error
+
+	// 继续任务（仅在暂停状态下有效）
+	Resume() error
+
+	// 获取传输进度（已完成分块数/总块数，已传输字节数/总字节数）
+	Progress() (int, int, int64, int64)
+}
+
+// transferContext manages transfer task state and control operations
+type transferContext struct {
+	status            atomic.Value         // 任务状态 TransferStatus
+	abort             int32                // 取消标志（原子操作）
+	pause             int32                // 暂停标志（原子操作）
+	totalParts        int                  // 总块数
+	completedParts    int                  // 已完成块数
+	totalBytes        int64                // 总字节数
+	transferredBytes  int64                // 已传输字节数
+	partLock          sync.Mutex           // 分块进度更新锁
+}
+
+func newTransferContext(totalParts int, totalBytes int64) *transferContext {
+	ctx := &transferContext{
+		totalParts:       totalParts,
+		totalBytes:       totalBytes,
+	}
+	ctx.status.Store(TransferStatusPending)
+	return ctx
+}
+
+func (ctx *transferContext) Status() TransferStatus {
+	return ctx.status.Load().(TransferStatus)
+}
+
+func (ctx *transferContext) setStatus(status TransferStatus) {
+	ctx.status.Store(status)
+}
+
+func (ctx *transferContext) Pause() error {
+	if ctx.Status() != TransferStatusRunning {
+		return fmt.Errorf("can't pause transfer in status %v", ctx.Status())
+	}
+	atomic.CompareAndSwapInt32(&ctx.pause, 0, 1)
+	ctx.setStatus(TransferStatusPaused)
+	return nil
+}
+
+func (ctx *transferContext) Cancel() error {
+	if ctx.Status() == TransferStatusCompleted || ctx.Status() == TransferStatusCanceled {
+		return fmt.Errorf("can't cancel transfer in status %v", ctx.Status())
+	}
+	atomic.CompareAndSwapInt32(&ctx.abort, 0, 1)
+	atomic.CompareAndSwapInt32(&ctx.pause, 0, 0) // 确保暂停标志被清除
+	ctx.setStatus(TransferStatusCanceled)
+	return nil
+}
+
+func (ctx *transferContext) Resume() error {
+	if ctx.Status() != TransferStatusPaused {
+		return fmt.Errorf("can't resume transfer in status %v", ctx.Status())
+	}
+	atomic.CompareAndSwapInt32(&ctx.pause, 1, 0)
+	ctx.setStatus(TransferStatusRunning)
+	return nil
+}
+
+func (ctx *transferContext) isPaused() bool {
+	return atomic.LoadInt32(&ctx.pause) == 1
+}
+
+func (ctx *transferContext) isCanceled() bool {
+	return atomic.LoadInt32(&ctx.abort) == 1
+}
+
+func (ctx *transferContext) incrementCompletedParts(partSize int64) {
+	ctx.partLock.Lock()
+	defer ctx.partLock.Unlock()
+	ctx.completedParts++
+	ctx.transferredBytes += partSize
+}
+
+func (ctx *transferContext) Progress() (int, int, int64, int64) {
+	ctx.partLock.Lock()
+	defer ctx.partLock.Unlock()
+	return ctx.completedParts, ctx.totalParts, ctx.transferredBytes, ctx.totalBytes
+}
 
 // objectKeyType defines the objectKey value
 type objectKeyType string
